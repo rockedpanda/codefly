@@ -11,7 +11,7 @@
     <link rel='stylesheet' href='css/highlight.min.css' />
     <link rel='stylesheet' href='css/highlight.agate.css' />
     <script src="js/highlight.min.js"></script>
-    <title>nodejs api doc</title>
+    <title>CodeFly</title>
     <style>
         body, html{
             margin:0;
@@ -31,7 +31,8 @@
         code{
             word-break: break-all;
             white-space: pre-wrap;
-            font-size: calc(100vw / 48);
+            /* font-size: calc(100vw / 40); */
+            height: 100vh;
         }
         .detailPage{
             position: fixed;
@@ -45,40 +46,62 @@
             position: fixed;
             bottom: 16px;
             right: 16px;
-            width: 5vw;
-            height: 5vw;
+            width: 8vw;
+            height: 8vw;
             border-radius: 50%;
             background-color: rgba(255,255,255,0.4);
             font-size: 20px;
-            line-height: 5vw;
+            line-height: 8vw;
             text-align: center;
             transform: rotate(-90deg);
+            box-shadow: 0 0 4px #333;
         }
         #back::after{
             content: "▲";
             top: -2px;
-            color: #FFF;
+            color: #EEE;
+        }
+        .remove{
+            cursor: pointer;
+            color: blue;
+        }
+        .item{
+            line-height: 1.5;
+            padding:0 0.3em;
+            font-size: calc(100vw / 26);
+            /* text-decoration: underline; */
+            color: blue;
         }
     </style>
 </head>
 <body>
     <div id="main">
+        <h2>打开文件</h2>
         <div>
             <input ref="file" type="file" v-model="f" />
         </div>
         <h2>已经缓存的zip列表</h2>
-        <div v-for="(zip,i) in zipList" :key="i">
-            <div @click="openFile(zip)">{{zip}}</div>
+        <div class="allZips">
+            <div v-for="(zip,i) in zipList" :key="i">
+                <div class="item" @click="openFile(zip)">{{zip}} &nbsp;&nbsp;<span class="remove" @click.stop="removeZip(zip)">删除</span></div>
+            </div>
         </div>
         <h2>当前zip中的文档列表</h2>
-        <div v-for="(file,i) in fileList" :key="i">
-            <div @click="readContent(file)">{{file.name}}</div>
+        <div class="fileList">
+            <div v-for="(file,i) in fileList" :key="i">
+                <div  class="item" @click="readContent(file)">{{file.name}}</div>
+            </div>
         </div>
         <h2>当前文档内容</h2>
-        <div class="detailPage" v-show="code || imgCode">
+        <div class="detailPage" :style="detailPageStyle" v-show="code || imgCode">
             <div v-if="code"><pre><code class="hljs language-javascript" v-html="shownCode"></code></pre></div>
             <div v-if="imgCode"><img :src="imgCode" /></div>
             <div id="back" v-if="code || imgCode" @click="closeDetail"></div>
+        </div>
+        <h2>设置</h2>
+        <div>
+            <div class="item" @click="fontSizeAdd(-1)">文本内容-字号变大 ({{charsPerRow}}字/行)</div>
+            <div class="item" @click="fontSizeAdd(1)">文本内容-字号变小 ({{charsPerRow}}字/行)</div>
         </div>
     </div>
 </body>
@@ -108,13 +131,30 @@
                 code:'', //文本类型的数据
                 imgCode:'', //图片格式的数据, base64格式data-url
                 f:'',
-                fileList:[]
+                fileList:[],
+                charsPerRow: parseInt(localStorage.getItem('codeflyCharsPerRow') || '26', 10)
             };
         },
         methods:{
             init:function(){
                 let list =Object.keys(localStorage).filter(x=>x.startsWith('codefly_')).map(x=>x.slice(8));
                 this.zipList = list;
+            },
+            fontSizeAdd:function(dx){
+                let count = this.charsPerRow + dx;
+                if(count < 10 || count > 100){
+                    return;
+                }
+                localStorage.setItem('codeflyCharsPerRow', count);
+                this.charsPerRow = count;
+            },
+            removeZip:function(z){
+                let ans = window.confirm('要移除缓存中的  '+z+' 吗?');
+                if(!ans){
+                    return;
+                }
+                localStorage.removeItem('codefly_'+z);
+                this.init();              
             },
             openFile:function(f){
                 let val = localStorage.getItem('codefly_'+f);
@@ -130,8 +170,18 @@
                 var reader = new FileReader();
                 reader.onload = function(e) {
                     console.log(e.target.result);
+                    let buf = new Uint8Array(e.target.result);
+                    let isZip = buf[0]===80 && buf[1]===75 && buf[2]===3;
+                    if(!isZip){
+                        let content = utf8BytesToStr(buf);
+                        localStorage.setItem('codefly_'+f.name, content);
+                        vm.zipList.push(f.name);
+                        vm.code = content;
+                        return;
+                    }
                     let cacheStr = bufToBase64(e.target.result);
                     localStorage.setItem('codefly_'+f.name, cacheStr);
+                    vm.zipList.push(f.name);
                     showFilesInZip(e.target.result);
                 };
                 reader.readAsArrayBuffer(f);
@@ -180,6 +230,14 @@
         computed:{
             shownCode:function(){
                 return hljs.highlight(this.code, {language: 'javascript'}).value;
+            },
+            detailPageStyle:function(){
+                if(this.charsPerRow){
+                    return {
+                        'font-size':`calc(100vw / ${this.charsPerRow})`
+                    };
+                }
+                return {}
             }
         },
         watch:{
@@ -214,6 +272,16 @@
             str += String.fromCharCode(t);
         });
         return window.btoa(str);
+    }
+    
+    function utf8BytesToStr(bytes) {
+        let utf8decoder = new TextDecoder();
+        return utf8decoder.decode(bytes);
+        // let text = ''
+        // for (let i = 0;i < bytes.length;i++) {
+        //     text += '%' + bytes[i].toString(16)
+        // }
+        // return decodeURIComponent(text)
     }
 
     function base64ToBuf(base64Str){

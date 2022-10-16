@@ -1,6 +1,6 @@
 {
-    "short_name": "nodeApi",
-    "name": "NodeJS api doc",
+    "short_name": "codeFly",
+    "name": "File viewer by PWA",
     "icons": [
         {
             "src": "144x144.png",

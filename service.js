@@ -1,4 +1,4 @@
-const VERSION = "V1.0.0";
+const VERSION = "V1.0.1";
 const CACHE_NAME = 'codeFly'+VERSION;
 
 const CACHE_URLS = [ //缓存列表,列表中的文件不会更新,永远从缓存读取,直到本文件更新版本.
