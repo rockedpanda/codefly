@@ -1,0 +1,15 @@
+{
+    "short_name": "nodeApi",
+    "name": "NodeJS api doc",
+    "icons": [
+        {
+            "src": "144x144.png",
+            "type": "image/png",
+            "sizes": "144x144"
+        }
+    ],
+    "background_color": "#2196f3",
+    "display": "standalone",
+    "start_url": "./pwa.html",
+    "orientation":"portrait-primary"
+}

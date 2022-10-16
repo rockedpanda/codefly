@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="manifest" href="./manifest.json" />
+    <script src="js/vue.min.js"></script>
+    <script src="js/vue-router.js"></script>
+    <script src="js/pizzip.min.js"></script>
+    <link rel='stylesheet' href='css/highlight.min.css' />
+    <link rel='stylesheet' href='css/highlight.agate.css' />
+    <script src="js/highlight.min.js"></script>
+    <title>nodejs api doc</title>
+    <style>
+        body, html{
+            margin:0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-size: 14px;
+        }
+        pre{
+            margin: 0;
+            padding: 0;
+        }
+        #main{
+            width: 100%;
+            height: 100%;
+        }
+        code{
+            word-break: break-all;
+            white-space: pre-wrap;
+            font-size: calc(100vw / 48);
+        }
+        .detailPage{
+            position: fixed;
+            width: 100vw;
+            height: 100vh;
+            left: 0;
+            top:0;
+            overflow-y: auto;
+        }
+        #back{
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            width: 5vw;
+            height: 5vw;
+            border-radius: 50%;
+            background-color: rgba(255,255,255,0.4);
+            font-size: 20px;
+            line-height: 5vw;
+            text-align: center;
+            transform: rotate(-90deg);
+        }
+        #back::after{
+            content: "▲";
+            top: -2px;
+            color: #FFF;
+        }
+    </style>
+</head>
+<body>
+    <div id="main">
+        <div>
+            <input ref="file" type="file" v-model="f" />
+        </div>
+        <h2>已经缓存的zip列表</h2>
+        <div v-for="(zip,i) in zipList" :key="i">
+            <div @click="openFile(zip)">{{zip}}</div>
+        </div>
+        <h2>当前zip中的文档列表</h2>
+        <div v-for="(file,i) in fileList" :key="i">
+            <div @click="readContent(file)">{{file.name}}</div>
+        </div>
+        <h2>当前文档内容</h2>
+        <div class="detailPage" v-show="code || imgCode">
+            <div v-if="code"><pre><code class="hljs language-javascript" v-html="shownCode"></code></pre></div>
+            <div v-if="imgCode"><img :src="imgCode" /></div>
+            <div id="back" v-if="code || imgCode" @click="closeDetail"></div>
+        </div>
+    </div>
+</body>
+<script>
+    if ('serviceWorker' in navigator && window.location.href.startsWith('https:')) {
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register('service.js')
+                .then(function (registration) {
+					//window.location.href = "index.html";
+				})
+                .catch(function (err) {
+                    console.log(err);
+					document.getElementById('main2').innerText = err.message;
+                });
+        });
+    }else{
+	   //document.getElementById('main').innerText = '环境或者浏览器不支持PWA';
+	}
+</script>
+<script>
+    var curZip = null;
+    var vm = new Vue({
+        el:'#main',
+        data:function(){
+            return {
+                zipList:[],
+                code:'', //文本类型的数据
+                imgCode:'', //图片格式的数据, base64格式data-url
+                f:'',
+                fileList:[]
+            };
+        },
+        methods:{
+            init:function(){
+                let list =Object.keys(localStorage).filter(x=>x.startsWith('codefly_')).map(x=>x.slice(8));
+                this.zipList = list;
+            },
+            openFile:function(f){
+                let val = localStorage.getItem('codefly_'+f);
+                if(val.slice(0,4)==='UEsD'){
+                    showFilesInZip(base64ToBuf(val));
+                }else{
+                    this.code = val;
+                }
+            },
+            readFile:function(){
+                let f = this.$refs.file.files[0];
+                console.log(f);
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    console.log(e.target.result);
+                    let cacheStr = bufToBase64(e.target.result);
+                    localStorage.setItem('codefly_'+f.name, cacheStr);
+                    showFilesInZip(e.target.result);
+                };
+                reader.readAsArrayBuffer(f);
+            },
+            readContent:function(f){
+                let postfix = f.name.split('.').pop().toLowerCase();
+                if(['png','jpg','jpeg','gif','bmp'].indexOf(postfix) !==-1){
+                    //图片类
+                    this.readImg(f, postfix);
+                // }else if(['zip','docx','xlsx'].indexOf(postfix) !== -1){
+                    // this.readText(f);
+                }else{
+                    if(f.name.endsWith('/')){
+                        toast('文件夹,不需要展示');
+                        return;
+                    }
+                    //toast('暂不支持');
+                    this.readText(f);
+                }
+
+            },
+            readText:function(f){
+                this.code = curZip.file(f.name).asText();
+                this.imgCode='';
+            },
+            readImg:function(f, postfix){
+                let type = ({
+                    jpeg:'jpeg',
+                    png:'png',
+                    jpeg: 'jpg',
+                    git:'gif',
+                    bemp:'bmp'
+                })[postfix]||'jpeg';
+                this.imgCode = 'data:image/'+type+';base64,'+bufToBase64(curZip.file(f.name).asUint8Array());
+                this.code = '';
+                console.log(this.imgCode);
+            },
+            closeDetail:function(){
+                this.code='';
+                this.imgCode = '';
+            }
+        },
+        mounted:function(){
+            this.init();
+        },
+        computed:{
+            shownCode:function(){
+                return hljs.highlight(this.code, {language: 'javascript'}).value;
+            }
+        },
+        watch:{
+            fileList:function(){
+                this.code='';
+            },
+            'f':function(val, oldVal){
+                console.log(val);
+                if(val){
+                    this.readFile();
+                }
+            },
+            code:function(val){
+                if(val){
+                    this.$nextTick(()=>{
+                        //hljs.highlightAll();
+                    })
+                }
+            }
+        }
+    });
+
+    function toast(s){
+        console.log(s);
+    }
+
+    function bufToBase64(buf){
+        let arr = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+        console.log(arr);
+        let str = '';
+        arr.forEach(t=>{
+            str += String.fromCharCode(t);
+        });
+        return window.btoa(str);
+    }
+
+    function base64ToBuf(base64Str){
+        let arr = window.atob(base64Str);
+        console.log(arr);
+        let buf = new Uint8Array(arr.length);
+        for(let i=0;i<arr.length;i++){
+            buf[i] = arr.charCodeAt(i);
+        }
+        return buf;
+    }
+
+    function showFilesInZip(buf){
+        curZip = new PizZip();
+        curZip.load(buf);
+        console.log(curZip.files);
+        vm.fileList = Object.values(curZip.files).map(x=>({
+            name:x.name,
+            dir:x.dir
+        }));
+    }
+//     var new_zip = new PizZip();
+// // more files !
+// new_zip.load(content);
+// console.log(new_zip.files);
+// you now have every files contained in the loaded zip
+//new_zip.file("hello.txt").asText(); // "Hello World\n"
+</script>
+</html>
